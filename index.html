@@ -215,7 +215,7 @@ async function fetchData(force = false) {
     const f = force ? '&force=true' : '';
     const [campRes, trendRes, adRes, urlRes] = await Promise.all([
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=campaign${f}`),
-      fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=account&time_increment=1${f}`),
+      fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=account&time_increment=daily${f}`),
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=ad${f}`),
       fetch(`${API_BASE}/api/ad_urls?account=${ACCOUNT_ID}`),
     ]);
