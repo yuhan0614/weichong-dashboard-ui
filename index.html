@@ -157,7 +157,7 @@ const ACCOUNT_ID = '1482186610196752';
 const PIE_COLORS = ['#1677ff','#fa8c16','#52c41a','#eb2f96','#722ed1','#13c2c2','#fadb14','#f5222d'];
 
 let charts = {};
-let allCampData = [], allTrendData = [], allAdData = [], adUrlMap = {};
+let allCampData = [], allCampTrendData = [], allAdData = [], adUrlMap = {};
 let adSortKey = 'spend', adSortDir = -1;
 
 // 分類：名稱含 conversion → conv，含 engage → eng，否則 other
@@ -216,18 +216,18 @@ async function fetchData(force = false) {
 
   try {
     const f = force ? '&force=true' : '';
-    const [campRes, trendRes, adRes, urlRes] = await Promise.all([
+    const [campRes, campTrendRes, adRes, urlRes] = await Promise.all([
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=campaign${f}`),
-      fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=account&time_increment=daily${f}`),
+      fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=campaign&time_increment=daily${f}`),
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=ad${f}`),
       fetch(`${API_BASE}/api/ad_urls?account=${ACCOUNT_ID}`),
     ]);
-    const campJson  = await campRes.json();
-    const trendJson = await trendRes.json();
-    const adJson    = await adRes.json();
-    allCampData  = campJson.data  || [];
-    allTrendData = trendJson.data || [];
-    allAdData    = adJson.data    || [];
+    const campJson      = await campRes.json();
+    const campTrendJson = await campTrendRes.json();
+    const adJson        = await adRes.json();
+    allCampData      = campJson.data      || [];
+    allCampTrendData = campTrendJson.data || [];
+    allAdData        = adJson.data        || [];
     adUrlMap     = (await urlRes.json()).data || {};
 
     const since2 = since, until2 = until;
@@ -321,10 +321,29 @@ function campTableHTML(camps, colMode) {
 }
 
 // ── Trend chart ───────────────────────────────────────────
-function drawTrendChart(canvasId, trendRows, since, until, chartKey, mode) {
+function drawTrendChart(canvasId, trendRows, since, until, chartKey, mode, type) {
   if (charts[chartKey]) charts[chartKey].destroy();
-  const rows = trendRows.filter(r => r.date_start >= since && r.date_start <= until);
-  const labels = rows.map(r => r.date_start);
+  // trendRows 是 campaign level daily，先篩分類再按日期加總
+  const filtered = trendRows.filter(r => classify(r.campaign_name) === type && r.date_start >= since && r.date_start <= until);
+  const dateMap = {};
+  filtered.forEach(r => {
+    if (!dateMap[r.date_start]) dateMap[r.date_start] = {spend:0,roas_num:0,roas_den:0,purchase:0,engagement:0};
+    const d = dateMap[r.date_start];
+    d.spend      += r.spend      || 0;
+    d.purchase   += r.purchase   || 0;
+    d.engagement += r.engagement || 0;
+    d.roas_num   += r.purchase_value || 0;
+    d.roas_den   += r.spend      || 0;
+  });
+  const dates = Object.keys(dateMap).sort();
+  const rows = dates.map(d => ({
+    date_start:  d,
+    spend:       dateMap[d].spend,
+    purchase:    dateMap[d].purchase,
+    engagement:  dateMap[d].engagement,
+    roas:        dateMap[d].roas_den > 0 ? dateMap[d].roas_num / dateMap[d].roas_den : 0,
+  }));
+  const labels = dates;
   const ds = mode === 'conv'
     ? [
         { type:'bar',  label:'花費',  data:rows.map(r=>r.spend||0),    backgroundColor:'rgba(22,119,255,0.25)', borderColor:'#1677ff', borderWidth:1, yAxisID:'y', borderRadius:3 },
@@ -436,7 +455,7 @@ function renderConv(since, until) {
       </div>
     </div>`;
 
-  drawTrendChart('convTrend', allTrendData, since, until, 'convTrend', 'conv');
+  drawTrendChart('convTrend', allCampTrendData, since, until, 'convTrend', 'conv', 'conv');
   drawPieChart('convPie', camps, 'convPie');
   adSortKey = 'spend'; adSortDir = -1;
   applyConvAdFilter();
@@ -476,7 +495,7 @@ function renderEng(since, until) {
       ${campTableHTML(camps, 'eng')}
     </div>`;
 
-  drawTrendChart('engTrend', allTrendData, since, until, 'engTrend', 'eng');
+  drawTrendChart('engTrend', allCampTrendData, since, until, 'engTrend', 'eng', 'eng');
   drawPieChart('engPie', camps, 'engPie');
 }
 
