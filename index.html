@@ -249,7 +249,8 @@ async function fetchData(force = false) {
 // ── Formatters ────────────────────────────────────────────
 function fmtN(n) { if (n == null || isNaN(n)) return '<span class="na">—</span>'; return (+n).toLocaleString('zh-TW',{maximumFractionDigits:0}); }
 function fmtM(n) { if (!n && n !== 0) return '<span class="na">—</span>'; return 'NT$'+Math.round(n).toLocaleString('zh-TW'); }
-function fmtP(n) { if (n == null) return '<span class="na">—</span>'; return (+n).toFixed(2)+'%'; }
+function fmtP(n, d=2) { if (n == null) return '<span class="na">—</span>'; return (+n).toFixed(d)+'%'; }
+function fmtM1(n) { if (!n && n !== 0) return '<span class="na">—</span>'; return 'NT$'+(+n).toLocaleString('zh-TW',{minimumFractionDigits:1,maximumFractionDigits:1}); }
 function rc(r)   { return r >= 10 ? 'roas-high' : r >= 3 ? 'roas-mid' : 'roas-low'; }
 
 function sumRows(rows) {
@@ -278,7 +279,7 @@ function campTableHTML(camps, colMode) {
   const convCols = `<th>加車</th><th>購買</th><th>轉換值</th><th>ROAS</th><th>CPA</th>`;
   const engCols  = `<th>互動</th><th>CPE</th>`;
   const convSumRow = `<td>${fmtN(tot.add_to_cart)}</td><td>${fmtN(tot.purchase)}</td><td>${fmtM(tot.purchase_value)}</td><td class="${rc(roas)}">${roas.toFixed(2)}x</td><td>${fmtM(cpa)}</td>`;
-  const engSumRow  = `<td>${fmtN(tot.engagement)}</td><td>${fmtM(cpe)}</td>`;
+  const engSumRow  = `<td>${fmtN(tot.engagement)}</td><td>${fmtM1(cpe)}</td>`;
 
   const rows = sorted.map(r => {
     const pct = tot.spend > 0 ? (r.spend/tot.spend*100).toFixed(1) : '0';
@@ -287,7 +288,7 @@ function campTableHTML(camps, colMode) {
     const r_cpe  = r.engagement > 0 ? r.spend/r.engagement : 0;
     const extra = colMode === 'conv'
       ? `<td>${fmtN(r.add_to_cart)}</td><td>${fmtN(r.purchase)}</td><td>${fmtM(r.purchase_value)}</td><td class="${rc(r_roas)}">${r_roas?(+r_roas).toFixed(2)+'x':'<span class="na">—</span>'}</td><td>${fmtM(r_cpa)}</td>`
-      : `<td>${fmtN(r.engagement)}</td><td>${fmtM(r_cpe)}</td>`;
+      : `<td>${fmtN(r.engagement)}</td><td>${fmtM1(r_cpe)}</td>`;
     return `<tr>
       <td><span class="cell-name" title="${r.campaign_name}">${r.campaign_name}</span></td>
       <td>${fmtM(r.spend)}</td>
@@ -491,8 +492,8 @@ function renderEng(since, until) {
       <td><div class="spend-bar-wrap"><span style="font-size:11px;color:#888">${pct}%</span><div class="spend-bar" style="width:${bw}px"></div></div></td>
       <td>${fmtN(r.impressions)}</td>
       <td>${fmtN(r.engagement)}</td>
-      <td>${fmtM(r_cpe)}</td>
-      <td>${fmtP(r_etr)}</td>
+      <td>${fmtM1(r_cpe)}</td>
+      <td>${fmtP(r_etr,1)}</td>
       <td>${fmtN(r.comment)}</td>
       <td>${fmtN(r.post_reaction)}</td>
       <td>${fmtN(r.link_clicks)}</td>
@@ -505,7 +506,7 @@ function renderEng(since, until) {
       <div class="sc c-blue"><div class="lbl">花費</div><div class="val">${fmtM(tot.spend)}</div><div class="sub">${since} ～ ${until}</div></div>
       <div class="sc"><div class="lbl">曝光</div><div class="val">${(tot.impressions/10000).toFixed(1)}萬</div><div class="sub">${tot.impressions.toLocaleString()}</div></div>
       <div class="sc c-orange"><div class="lbl">互動</div><div class="val">${Math.round(tot.engagement).toLocaleString()}</div><div class="sub">Engagement</div></div>
-      <div class="sc c-teal"><div class="lbl">CPE</div><div class="val">${fmtM(cpe)}</div><div class="sub">Cost per Engagement</div></div>
+      <div class="sc c-teal"><div class="lbl">CPE</div><div class="val">${fmtM1(cpe)}</div><div class="sub">Cost per Engagement</div></div>
       <div class="sc c-purple"><div class="lbl">ETR</div><div class="val">${etr.toFixed(2)}%</div><div class="sub">互動 / 曝光</div></div>
       <div class="sc"><div class="lbl">留言</div><div class="val">${Math.round(tot.comment).toLocaleString()}</div><div class="sub">貼文留言數</div></div>
       <div class="sc c-pink"><div class="lbl">心情數</div><div class="val">${Math.round(tot.post_reaction).toLocaleString()}</div><div class="sub">貼文心情數</div></div>
@@ -541,8 +542,8 @@ function renderEng(since, until) {
             <td>${fmtM(tot.spend)}</td><td></td>
             <td>${fmtN(tot.impressions)}</td>
             <td>${fmtN(tot.engagement)}</td>
-            <td>${fmtM(cpe)}</td>
-            <td>${fmtP(etr)}</td>
+            <td>${fmtM1(cpe)}</td>
+            <td>${fmtP(etr,1)}</td>
             <td>${fmtN(tot.comment)}</td>
             <td>${fmtN(tot.post_reaction)}</td>
             <td>${fmtN(tot.link_clicks)}</td>
