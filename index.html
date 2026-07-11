@@ -464,17 +464,53 @@ function renderConv(since, until) {
 // ── Tab 2: Meta-互動 ──────────────────────────────────────
 function renderEng(since, until) {
   const camps = allCampData.filter(r => classify(r.campaign_name) === 'eng');
-  const tot   = sumRows(camps);
-  const cpe   = tot.engagement > 0 ? tot.spend/tot.engagement : 0;
-  const cplc  = tot.link_clicks > 0 ? tot.spend/tot.link_clicks : 0;
+  const tot = camps.reduce((a, r) => ({
+    spend:        a.spend        + (r.spend        || 0),
+    impressions:  a.impressions  + (r.impressions  || 0),
+    link_clicks:  a.link_clicks  + (r.link_clicks  || 0),
+    engagement:   a.engagement   + (r.engagement   || 0),
+    comment:      a.comment      + (r.comment      || 0),
+    post_reaction:a.post_reaction+ (r.post_reaction|| 0),
+    video_view:   a.video_view   + (r.video_view   || 0),
+  }), {spend:0,impressions:0,link_clicks:0,engagement:0,comment:0,post_reaction:0,video_view:0});
+
+  const cpe = tot.engagement  > 0 ? tot.spend / tot.engagement  : 0;
+  const etr = tot.impressions > 0 ? tot.engagement / tot.impressions * 100 : 0;
+
+  const engRows = [...camps].sort((a,b) => (b.spend||0)-(a.spend||0));
+  const maxSpend = engRows[0]?.spend || 1;
+
+  const tableRows = engRows.map(r => {
+    const pct    = tot.spend > 0 ? (r.spend/tot.spend*100).toFixed(1) : '0';
+    const bw     = Math.round((r.spend||0)/maxSpend*80);
+    const r_cpe  = r.engagement > 0 ? r.spend/r.engagement : 0;
+    const r_etr  = r.impressions > 0 ? (r.engagement||0)/r.impressions*100 : 0;
+    return `<tr>
+      <td><span class="cell-name" title="${r.campaign_name}">${r.campaign_name}</span></td>
+      <td>${fmtM(r.spend)}</td>
+      <td><div class="spend-bar-wrap"><span style="font-size:11px;color:#888">${pct}%</span><div class="spend-bar" style="width:${bw}px"></div></div></td>
+      <td>${fmtN(r.impressions)}</td>
+      <td>${fmtN(r.engagement)}</td>
+      <td>${fmtM(r_cpe)}</td>
+      <td>${fmtP(r_etr)}</td>
+      <td>${fmtN(r.comment)}</td>
+      <td>${fmtN(r.post_reaction)}</td>
+      <td>${fmtN(r.link_clicks)}</td>
+      <td>${fmtN(r.video_view)}</td>
+    </tr>`;
+  }).join('');
 
   document.getElementById('tab-eng').innerHTML = `
     <div class="summary-grid">
       <div class="sc c-blue"><div class="lbl">花費</div><div class="val">${fmtM(tot.spend)}</div><div class="sub">${since} ～ ${until}</div></div>
       <div class="sc"><div class="lbl">曝光</div><div class="val">${(tot.impressions/10000).toFixed(1)}萬</div><div class="sub">${tot.impressions.toLocaleString()}</div></div>
-      <div class="sc c-purple"><div class="lbl">連結點擊</div><div class="val">${tot.link_clicks.toLocaleString()}</div><div class="sub">CPLC ${fmtM(cplc)}</div></div>
       <div class="sc c-orange"><div class="lbl">互動</div><div class="val">${Math.round(tot.engagement).toLocaleString()}</div><div class="sub">Engagement</div></div>
       <div class="sc c-teal"><div class="lbl">CPE</div><div class="val">${fmtM(cpe)}</div><div class="sub">Cost per Engagement</div></div>
+      <div class="sc c-purple"><div class="lbl">ETR</div><div class="val">${etr.toFixed(2)}%</div><div class="sub">互動 / 曝光</div></div>
+      <div class="sc"><div class="lbl">留言</div><div class="val">${Math.round(tot.comment).toLocaleString()}</div><div class="sub">貼文留言數</div></div>
+      <div class="sc c-pink"><div class="lbl">心情數</div><div class="val">${Math.round(tot.post_reaction).toLocaleString()}</div><div class="sub">貼文心情數</div></div>
+      <div class="sc c-green"><div class="lbl">連結點擊</div><div class="val">${tot.link_clicks.toLocaleString()}</div><div class="sub">Link Clicks</div></div>
+      <div class="sc" style="--v:#fa8c16"><div class="lbl">觀看</div><div class="val" style="color:#fa8c16">${Math.round(tot.video_view).toLocaleString()}</div><div class="sub">影片播放 3 秒+</div></div>
     </div>
     <div class="charts-row">
       <div class="chart-card">
@@ -492,7 +528,28 @@ function renderEng(since, until) {
     </div>
     <div class="table-card">
       <div class="table-header"><h3>🎯 廣告活動成效</h3><span style="font-size:12px;color:#aaa;">${camps.length} 個廣告活動</span></div>
-      ${campTableHTML(camps, 'eng')}
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>廣告活動</th><th>花費</th><th>佔比</th><th>曝光</th>
+          <th>互動</th><th>CPE</th><th>ETR</th>
+          <th>留言</th><th>心情數</th><th>連結點擊</th><th>觀看</th>
+        </tr></thead>
+        <tbody>
+          ${tableRows}
+          <tr class="sum-row">
+            <td>合計</td>
+            <td>${fmtM(tot.spend)}</td><td></td>
+            <td>${fmtN(tot.impressions)}</td>
+            <td>${fmtN(tot.engagement)}</td>
+            <td>${fmtM(cpe)}</td>
+            <td>${fmtP(etr)}</td>
+            <td>${fmtN(tot.comment)}</td>
+            <td>${fmtN(tot.post_reaction)}</td>
+            <td>${fmtN(tot.link_clicks)}</td>
+            <td>${fmtN(tot.video_view)}</td>
+          </tr>
+        </tbody>
+      </table></div>
     </div>`;
 
   drawTrendChart('engTrend', allCampTrendData, since, until, 'engTrend', 'eng', 'eng');
