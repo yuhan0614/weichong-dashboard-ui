@@ -133,7 +133,8 @@
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('conv', this)">🛒 Meta-轉換</button>
+  <button class="tab-btn active" onclick="switchTab('summary', this)">📋 總表</button>
+  <button class="tab-btn" onclick="switchTab('conv', this)">🛒 Meta-轉換</button>
   <button class="tab-btn" onclick="switchTab('eng', this)">💬 Meta-互動</button>
 </div>
 
@@ -143,7 +144,10 @@
 </div>
 
 <div class="main">
-  <div class="tab-panel active" id="tab-conv">
+  <div class="tab-panel active" id="tab-summary">
+    <div style="text-align:center;padding:60px;color:#aaa;">點擊「更新資料」開始載入</div>
+  </div>
+  <div class="tab-panel" id="tab-conv">
     <div style="text-align:center;padding:60px;color:#aaa;">點擊「更新資料」開始載入</div>
   </div>
   <div class="tab-panel" id="tab-eng">
@@ -231,6 +235,7 @@ async function fetchData(force = false) {
     adUrlMap     = (await urlRes.json()).data || {};
 
     const since2 = since, until2 = until;
+    renderSummary(since2, until2);
     renderConv(since2, until2);
     renderEng(since2, until2);
 
@@ -379,6 +384,153 @@ function drawPieChart(canvasId, camps, chartKey) {
     type:'doughnut',
     data:{ labels:sorted.map(r=>r.campaign_name.slice(0,18)), datasets:[{data:sorted.map(r=>r.spend),backgroundColor:PIE_COLORS,borderWidth:2,borderColor:'white'}] },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10,padding:6}}} }
+  });
+}
+
+// ── Tab 總表 ──────────────────────────────────────────────
+function renderSummary(since, until) {
+  const convCamps = allCampData.filter(r => classify(r.campaign_name) === 'conv');
+  const engCamps  = allCampData.filter(r => classify(r.campaign_name) === 'eng');
+  const conv = sumRows(convCamps);
+  const eng  = sumRows(engCamps);
+  const all  = {
+    spend:          conv.spend          + eng.spend,
+    impressions:    conv.impressions    + eng.impressions,
+    link_clicks:    conv.link_clicks    + eng.link_clicks,
+    purchase:       conv.purchase       + eng.purchase,
+    purchase_value: conv.purchase_value + eng.purchase_value,
+    engagement:     conv.engagement     + eng.engagement,
+    add_to_cart:    conv.add_to_cart    + eng.add_to_cart,
+  };
+  const allRoas = all.spend > 0 ? all.purchase_value / all.spend : 0;
+  const allCpa  = all.purchase > 0 ? all.spend / all.purchase : 0;
+  const convPct = all.spend > 0 ? (conv.spend / all.spend * 100).toFixed(1) : '0';
+  const engPct  = all.spend > 0 ? (eng.spend  / all.spend * 100).toFixed(1) : '0';
+  const convRoas = conv.spend > 0 ? conv.purchase_value / conv.spend : 0;
+  const convCpa  = conv.purchase > 0 ? conv.spend / conv.purchase : 0;
+  const engCpe   = eng.engagement > 0 ? eng.spend / eng.engagement : 0;
+  const engEtr   = eng.impressions > 0 ? eng.engagement / eng.impressions * 100 : 0;
+
+  // 每日趨勢：從 allCampTrendData 分類加總
+  const buildDaily = (type) => {
+    const map = {};
+    allCampTrendData
+      .filter(r => classify(r.campaign_name) === type && r.date_start >= since && r.date_start <= until)
+      .forEach(r => {
+        if (!map[r.date_start]) map[r.date_start] = { spend: 0, purchase_value: 0, spend_denom: 0 };
+        map[r.date_start].spend          += r.spend          || 0;
+        map[r.date_start].purchase_value += r.purchase_value || 0;
+      });
+    return map;
+  };
+  const convDaily = buildDaily('conv');
+  const engDaily  = buildDaily('eng');
+  const dates = [...new Set([...Object.keys(convDaily), ...Object.keys(engDaily)])].sort();
+
+  document.getElementById('tab-summary').innerHTML = `
+    <div class="summary-grid">
+      <div class="sc c-blue"><div class="lbl">合計花費</div><div class="val">${fmtM(all.spend)}</div><div class="sub">${since} ～ ${until}</div></div>
+      <div class="sc" style="background:#fff7e6"><div class="lbl">轉換花費</div><div class="val" style="color:#fa8c16">${fmtM(conv.spend)}</div><div class="sub">${convPct}%</div></div>
+      <div class="sc" style="background:#f0fff0"><div class="lbl">互動花費</div><div class="val" style="color:#52c41a">${fmtM(eng.spend)}</div><div class="sub">${engPct}%</div></div>
+      <div class="sc c-teal"><div class="lbl">合計購買</div><div class="val">${Math.round(all.purchase).toLocaleString()}</div><div class="sub">Conversions</div></div>
+      <div class="sc c-pink"><div class="lbl">合計營收</div><div class="val">${fmtM(all.purchase_value)}</div><div class="sub">Revenue</div></div>
+      <div class="sc c-green"><div class="lbl">合計 ROAS</div><div class="val">${allRoas.toFixed(2)}x</div><div class="sub">營收 / 花費</div></div>
+      <div class="sc"><div class="lbl">合計 CPA</div><div class="val">${fmtM(allCpa)}</div><div class="sub">Cost per Purchase</div></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>📅 每日花費趨勢（轉換 vs 互動）</h3>
+        <div class="chart-wrap"><canvas id="summaryTrend"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>💰 花費佔比（類型）</h3>
+        <div class="chart-wrap"><canvas id="summaryPie"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>📊 類型比較</h3></div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>類型</th><th>花費</th><th>佔比</th><th>曝光</th><th>點擊</th><th>CTR</th>
+          <th>購買</th><th>營收</th><th>ROAS</th><th>CPA</th>
+          <th>互動</th><th>CPE</th><th>ETR</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:700;color:#fa8c16">🛒 轉換</td>
+            <td>${fmtM(conv.spend)}</td>
+            <td>${convPct}%</td>
+            <td>${fmtN(conv.impressions)}</td>
+            <td>${fmtN(conv.link_clicks)}</td>
+            <td>${fmtP(conv.impressions ? conv.link_clicks/conv.impressions*100 : 0)}</td>
+            <td>${fmtN(conv.purchase)}</td>
+            <td>${fmtM(conv.purchase_value)}</td>
+            <td class="${rc(convRoas)}">${convRoas.toFixed(2)}x</td>
+            <td>${fmtM(convCpa)}</td>
+            <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight:700;color:#52c41a">💬 互動</td>
+            <td>${fmtM(eng.spend)}</td>
+            <td>${engPct}%</td>
+            <td>${fmtN(eng.impressions)}</td>
+            <td>${fmtN(eng.link_clicks)}</td>
+            <td>${fmtP(eng.impressions ? eng.link_clicks/eng.impressions*100 : 0)}</td>
+            <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
+            <td>${fmtN(eng.engagement)}</td>
+            <td>${fmtM1(engCpe)}</td>
+            <td>${fmtP(engEtr, 1)}</td>
+          </tr>
+          <tr class="sum-row">
+            <td>合計</td>
+            <td>${fmtM(all.spend)}</td>
+            <td>100%</td>
+            <td>${fmtN(all.impressions)}</td>
+            <td>${fmtN(all.link_clicks)}</td>
+            <td>${fmtP(all.impressions ? all.link_clicks/all.impressions*100 : 0)}</td>
+            <td>${fmtN(all.purchase)}</td>
+            <td>${fmtM(all.purchase_value)}</td>
+            <td class="${rc(allRoas)}">${allRoas.toFixed(2)}x</td>
+            <td>${fmtM(allCpa)}</td>
+            <td>${fmtN(all.engagement)}</td>
+            <td><span class="na">—</span></td><td><span class="na">—</span></td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>`;
+
+  // 趨勢圖
+  if (charts['summaryTrend']) charts['summaryTrend'].destroy();
+  charts['summaryTrend'] = new Chart(document.getElementById('summaryTrend'), {
+    data: {
+      labels: dates,
+      datasets: [
+        { type:'bar',  label:'轉換花費', data: dates.map(d => convDaily[d]?.spend || 0), backgroundColor:'rgba(250,140,22,0.4)', borderColor:'#fa8c16', borderWidth:1, yAxisID:'y', borderRadius:3 },
+        { type:'bar',  label:'互動花費', data: dates.map(d => engDaily[d]?.spend  || 0), backgroundColor:'rgba(82,196,26,0.4)',  borderColor:'#52c41a', borderWidth:1, yAxisID:'y', borderRadius:3 },
+        { type:'line', label:'ROAS',    data: dates.map(d => {
+          const s = convDaily[d]?.spend || 0, v = convDaily[d]?.purchase_value || 0;
+          return s > 0 ? v/s : 0;
+        }), borderColor:'#1677ff', borderWidth:2, pointRadius:3, tension:0.3, yAxisID:'y2' },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{ position:'top', labels:{font:{size:11},boxWidth:12,padding:10} } },
+      scales: {
+        x:  { stacked:true, grid:{display:false}, ticks:{font:{size:10},maxTicksLimit:10} },
+        y:  { stacked:true, position:'left',  beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:v=>'NT$'+Math.round(v/1000)+'K',font:{size:10}} },
+        y2: { position:'right', beginAtZero:true, grid:{display:false}, ticks:{callback:v=>v.toFixed(1)+'x',font:{size:10}} },
+      }
+    }
+  });
+
+  // 圓餅圖
+  if (charts['summaryPie']) charts['summaryPie'].destroy();
+  charts['summaryPie'] = new Chart(document.getElementById('summaryPie'), {
+    type:'doughnut',
+    data:{ labels:['轉換','互動'], datasets:[{data:[conv.spend, eng.spend], backgroundColor:['#fa8c16','#52c41a'], borderWidth:2, borderColor:'white'}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:12},boxWidth:14,padding:10}}} }
   });
 }
 
