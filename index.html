@@ -606,6 +606,9 @@ function renderConv(since, until) {
           <tbody id="convAdBody"></tbody>
         </table>
       </div>
+      <div id="convAdMore" style="text-align:center;padding:10px 0;display:none">
+        <button onclick="toggleConvAdRows()" id="convAdToggleBtn" style="border:1px solid #d9d9d9;background:white;border-radius:6px;padding:6px 20px;cursor:pointer;font-size:13px;color:#555">▼ 展開全部</button>
+      </div>
     </div>`;
 
   drawTrendChart('convTrend', allCampTrendData, since, until, 'convTrend', 'conv', 'conv');
@@ -748,11 +751,21 @@ function sortConvAds(key) {
   applyConvAdFilter();
 }
 
+let _convAdSorted = [];
+let _convAdExpanded = false;
+
 function renderConvAdTable(data) {
-  const sorted = [...data].sort((a,b) => ((a[adSortKey]||0)-(b[adSortKey]||0)) * adSortDir);
+  _convAdSorted = [...data].sort((a,b) => ((a[adSortKey]||0)-(b[adSortKey]||0)) * adSortDir);
+  _convAdExpanded = false;
+  _drawConvAdRows();
+}
+
+function _drawConvAdRows() {
+  const sorted = _convAdSorted;
   const maxSpend = Math.max(...sorted.map(r=>r.spend||0), 1);
+  const visible = _convAdExpanded ? sorted : sorted.slice(0, 6);
   document.getElementById('convAdCount').textContent = `${sorted.length} 筆`;
-  document.getElementById('convAdBody').innerHTML = sorted.map(r => {
+  document.getElementById('convAdBody').innerHTML = visible.map(r => {
     const bw   = Math.round((r.spend||0)/maxSpend*60);
     const info = adUrlMap[r.ad_name] || {};
     const thumb = info.thumb
@@ -768,6 +781,19 @@ function renderConvAdTable(data) {
       <td>${fmtM(r.cpa)}</td>
     </tr>`;
   }).join('');
+  const moreEl = document.getElementById('convAdMore');
+  const btnEl  = document.getElementById('convAdToggleBtn');
+  if (sorted.length > 6) {
+    moreEl.style.display = '';
+    btnEl.textContent = _convAdExpanded ? '▲ 收合' : `▼ 展開全部（${sorted.length} 筆）`;
+  } else {
+    moreEl.style.display = 'none';
+  }
+}
+
+function toggleConvAdRows() {
+  _convAdExpanded = !_convAdExpanded;
+  _drawConvAdRows();
 }
 </script>
 </body>
