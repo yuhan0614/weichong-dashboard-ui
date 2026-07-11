@@ -717,12 +717,14 @@ function groupByName(rows) {
   const map = {};
   for (const r of rows) {
     const key = r.ad_name || '—';
-    if (!map[key]) map[key] = { ad_name:key, campaign_name:r.campaign_name, spend:0, impressions:0, link_clicks:0, add_to_cart:0, purchase:0, purchase_value:0 };
+    if (!map[key]) map[key] = { ad_name:key, _campaigns:new Set(), spend:0, impressions:0, link_clicks:0, add_to_cart:0, purchase:0, purchase_value:0 };
     const g = map[key];
+    if (r.campaign_name) g._campaigns.add(r.campaign_name);
     ['spend','impressions','link_clicks','add_to_cart','purchase','purchase_value'].forEach(k => g[k] += r[k]||0);
   }
   return Object.values(map).map(g => ({
     ...g,
+    campaign_name: [...g._campaigns].join(', '),
     ctr:  g.impressions > 0 ? g.link_clicks/g.impressions*100 : 0,
     cplc: g.link_clicks > 0 ? g.spend/g.link_clicks : 0,
     roas: g.spend > 0 ? g.purchase_value/g.spend : 0,
@@ -734,11 +736,12 @@ function applyConvAdFilter() {
   const camp = document.getElementById('convCampFilter')?.value || '';
   const q    = (document.getElementById('convAdSearch')?.value || '').toLowerCase();
   const base = allAdData.filter(r => classify(r.campaign_name) === 'conv');
-  const filtered = base.filter(r =>
-    (!camp || r.campaign_name === camp) &&
+  const grouped = groupByName(base);
+  const filtered = grouped.filter(r =>
+    (!camp || r._campaigns.has(camp)) &&
     (!q    || (r.ad_name||'').toLowerCase().includes(q))
   );
-  renderConvAdTable(groupByName(filtered));
+  renderConvAdTable(filtered);
 }
 
 function sortConvAds(key) {
