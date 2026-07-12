@@ -177,6 +177,11 @@ function toYMD(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function clearPreset() { document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active')); }
+
+window.addEventListener('DOMContentLoaded', () => {
+  applyPreset(7);
+  fetchData(false);
+});
 function applyPreset(days) {
   const to = new Date(), from = new Date();
   from.setDate(to.getDate() - days + 1);
