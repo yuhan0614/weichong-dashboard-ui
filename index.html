@@ -83,8 +83,9 @@
   .roas-low { color: #f5222d; font-weight: 700; }
   .spend-bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
   .spend-bar { height: 5px; border-radius: 3px; background: #1677ff; opacity: 0.55; min-width: 2px; }
-  .cell-name { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-  .cell-sub { font-size: 11px; color: #aaa; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .cell-name { font-weight: 600; white-space: nowrap; display: block; }
+  .cell-sub { font-size: 11px; color: #aaa; white-space: nowrap; display: block; }
+  .ad-scroll-wrap { overflow-x: auto; overflow-y: auto; max-height: 420px; }
   th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; }
   th:first-child { background: #f7f8fa; z-index: 3; }
   td:first-child { background: white; }
@@ -579,16 +580,9 @@ function renderConv(since, until) {
     <div class="table-card">
       <div class="table-header">
         <h3>🎨 素材成效</h3>
-        <div class="table-header-right filter-row">
-          <select class="filter-select" id="convCampFilter" onchange="applyConvAdFilter()">
-            <option value="">所有廣告活動</option>
-            ${convCampaigns.map(c=>`<option value="${c}">${c}</option>`).join('')}
-          </select>
-          <input type="text" class="search-input" id="convAdSearch" placeholder="搜尋素材名稱…" oninput="applyConvAdFilter()">
-          <span class="count-badge" id="convAdCount"></span>
-        </div>
+        <span class="count-badge" id="convAdCount"></span>
       </div>
-      <div class="table-wrap">
+      <div class="ad-scroll-wrap">
         <table>
           <thead><tr>
             <th>素材名稱</th>
@@ -605,9 +599,6 @@ function renderConv(since, until) {
           </tr></thead>
           <tbody id="convAdBody"></tbody>
         </table>
-      </div>
-      <div id="convAdMore" style="text-align:center;padding:10px 0;display:none">
-        <button onclick="toggleConvAdRows()" id="convAdToggleBtn" style="border:1px solid #d9d9d9;background:white;border-radius:6px;padding:6px 20px;cursor:pointer;font-size:13px;color:#555">▼ 展開全部</button>
       </div>
     </div>`;
 
@@ -733,15 +724,8 @@ function groupByName(rows) {
 }
 
 function applyConvAdFilter() {
-  const camp = document.getElementById('convCampFilter')?.value || '';
-  const q    = (document.getElementById('convAdSearch')?.value || '').toLowerCase();
   const base = allAdData.filter(r => classify(r.campaign_name) === 'conv');
-  const grouped = groupByName(base);
-  const filtered = grouped.filter(r =>
-    (!camp || r._campaigns.has(camp)) &&
-    (!q    || (r.ad_name||'').toLowerCase().includes(q))
-  );
-  renderConvAdTable(filtered);
+  renderConvAdTable(groupByName(base));
 }
 
 function sortConvAds(key) {
@@ -754,28 +738,18 @@ function sortConvAds(key) {
   applyConvAdFilter();
 }
 
-let _convAdSorted = [];
-let _convAdExpanded = false;
-
 function renderConvAdTable(data) {
-  _convAdSorted = [...data].sort((a,b) => ((a[adSortKey]||0)-(b[adSortKey]||0)) * adSortDir);
-  _convAdExpanded = false;
-  _drawConvAdRows();
-}
-
-function _drawConvAdRows() {
-  const sorted = _convAdSorted;
+  const sorted = [...data].sort((a,b) => ((a[adSortKey]||0)-(b[adSortKey]||0)) * adSortDir);
   const maxSpend = Math.max(...sorted.map(r=>r.spend||0), 1);
-  const visible = _convAdExpanded ? sorted : sorted.slice(0, 6);
   document.getElementById('convAdCount').textContent = `${sorted.length} 筆`;
-  document.getElementById('convAdBody').innerHTML = visible.map(r => {
+  document.getElementById('convAdBody').innerHTML = sorted.map(r => {
     const bw   = Math.round((r.spend||0)/maxSpend*60);
     const info = adUrlMap[r.ad_name] || {};
     const thumb = info.thumb
       ? `<img src="${info.thumb}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;display:block;border:1px solid #eee;margin:0 auto" onerror="this.style.display='none'">`
       : '<span class="na">—</span>';
     return `<tr>
-      <td><span class="cell-name" title="${r.ad_name}">${r.ad_name||'—'}</span><span class="cell-sub">${r.campaign_name||''}</span></td>
+      <td><span class="cell-name">${r.ad_name||'—'}</span><span class="cell-sub">${r.campaign_name||''}</span></td>
       <td style="text-align:center">${thumb}</td>
       <td><div class="spend-bar-wrap">${fmtM(r.spend)}<div class="spend-bar" style="width:${bw}px"></div></div></td>
       <td>${fmtN(r.impressions)}</td><td>${fmtP(r.ctr)}</td><td>${fmtM(r.cplc)}</td>
@@ -784,19 +758,6 @@ function _drawConvAdRows() {
       <td>${fmtM(r.cpa)}</td>
     </tr>`;
   }).join('');
-  const moreEl = document.getElementById('convAdMore');
-  const btnEl  = document.getElementById('convAdToggleBtn');
-  if (sorted.length > 6) {
-    moreEl.style.display = '';
-    btnEl.textContent = _convAdExpanded ? '▲ 收合' : `▼ 展開全部（${sorted.length} 筆）`;
-  } else {
-    moreEl.style.display = 'none';
-  }
-}
-
-function toggleConvAdRows() {
-  _convAdExpanded = !_convAdExpanded;
-  _drawConvAdRows();
 }
 </script>
 </body>
