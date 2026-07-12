@@ -21,6 +21,10 @@
   .preset-btn { padding: 5px 14px; border: 1.5px solid #e4e6ea; border-radius: 20px; background: white; font-size: 12px; cursor: pointer; color: #555; transition: all 0.15s; font-weight: 500; }
   .preset-btn:hover { background: #e6f4ff; border-color: #1677ff; color: #1677ff; }
   .preset-btn.active { background: #1677ff; color: white; border-color: #1677ff; }
+  .period-btn { padding: 4px 14px; border: 1.5px solid #e4e6ea; border-radius: 20px; background: white; font-size: 12px; cursor: pointer; color: #555; font-weight: 500; transition: all 0.15s; }
+  .period-btn.active { background: #52c41a; color: white; border-color: #52c41a; }
+  .breakdown-row td { font-size: 13px; color: #444; }
+  .breakdown-header td { font-size: 11px; font-weight: 700; color: #888; background: #fafafa; border-top: 2px solid #e4e6ea; text-transform: uppercase; letter-spacing: 0.3px; }
   .date-inputs { display: flex; align-items: center; gap: 6px; }
   .date-inputs input { padding: 5px 10px; border: 1.5px solid #e4e6ea; border-radius: 8px; font-size: 12px; outline: none; }
   .date-inputs input:focus { border-color: #1677ff; }
@@ -114,12 +118,12 @@
 
 <div class="controls">
   <div class="preset-btns">
-    <button class="preset-btn" onclick="applyPreset(1)">今天</button>
-    <button class="preset-btn" onclick="applyPresetYesterday()">昨天</button>
-    <button class="preset-btn" onclick="applyPreset(7)">近7天</button>
-    <button class="preset-btn" onclick="applyPreset(30)">近30天</button>
-    <button class="preset-btn" onclick="applyPreset(90)">近90天</button>
-    <button class="preset-btn" onclick="applyPresetMonth()">本月</button>
+    <button class="preset-btn" data-days="1"  onclick="applyPreset(1,this)">今天</button>
+    <button class="preset-btn"                onclick="applyPresetYesterday()">昨天</button>
+    <button class="preset-btn" data-days="7"  onclick="applyPreset(7,this)">近7天</button>
+    <button class="preset-btn" data-days="30" onclick="applyPreset(30,this)">近30天</button>
+    <button class="preset-btn" data-days="90" onclick="applyPreset(90,this)">近90天</button>
+    <button class="preset-btn"                onclick="applyPresetMonth()">本月</button>
   </div>
   <div class="date-inputs">
     <input type="date" id="dateFrom" onchange="clearPreset()">
@@ -179,15 +183,18 @@ function toYMD(d) {
 function clearPreset() { document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active')); }
 
 window.addEventListener('DOMContentLoaded', () => {
-  applyPreset(7);
+  const btn7 = document.querySelector('.preset-btn[data-days="7"]');
+  applyPreset(7, btn7);
   fetchData(false);
 });
-function applyPreset(days) {
+function applyPreset(days, btn) {
   const to = new Date(), from = new Date();
   from.setDate(to.getDate() - days + 1);
   document.getElementById('dateFrom').value = toYMD(from);
   document.getElementById('dateTo').value = toYMD(to);
-  clearPreset(); event.target.classList.add('active');
+  clearPreset();
+  const target = btn || event?.target;
+  if (target) target.classList.add('active');
 }
 function applyPresetYesterday() {
   const d = new Date(); d.setDate(d.getDate() - 1);
@@ -579,8 +586,16 @@ function renderConv(since, until) {
       </div>
     </div>
     <div class="table-card">
-      <div class="table-header"><h3>🎯 廣告活動成效</h3><span style="font-size:12px;color:#aaa;">${camps.length} 個廣告活動</span></div>
+      <div class="table-header">
+        <h3>🎯 廣告活動成效</h3>
+        <div style="display:flex;gap:6px">
+          <button class="period-btn active" onclick="switchConvPeriod('day',this)">日</button>
+          <button class="period-btn" onclick="switchConvPeriod('week',this)">週</button>
+          <button class="period-btn" onclick="switchConvPeriod('month',this)">月</button>
+        </div>
+      </div>
       ${campTableHTML(camps, 'conv')}
+      <div id="convBreakdown" style="overflow-x:auto"></div>
     </div>
     <div class="table-card">
       <div class="table-header">
@@ -611,6 +626,72 @@ function renderConv(since, until) {
   drawPieChart('convPie', camps, 'convPie');
   adSortKey = 'spend'; adSortDir = -1;
   applyConvAdFilter();
+  renderConvBreakdown('day');
+}
+
+let _convBreakPeriod = 'day';
+function switchConvPeriod(mode, btn) {
+  _convBreakPeriod = mode;
+  document.querySelectorAll('#tab-conv .period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderConvBreakdown(mode);
+}
+
+function renderConvBreakdown(mode) {
+  const el = document.getElementById('convBreakdown');
+  if (!el) return;
+  const rows = allCampTrendData.filter(r => classify(r.campaign_name) === 'conv');
+
+  function periodKey(dateStr) {
+    if (mode === 'day') return dateStr;
+    if (mode === 'month') return dateStr.slice(0, 7);
+    // week: Monday of the week
+    const d = new Date(dateStr);
+    const day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  const map = {};
+  for (const r of rows) {
+    const k = periodKey(r.date_start);
+    if (!map[k]) map[k] = { period:k, spend:0, impressions:0, link_clicks:0, add_to_cart:0, purchase:0, purchase_value:0 };
+    const g = map[k];
+    ['spend','impressions','link_clicks','add_to_cart','purchase','purchase_value'].forEach(f => g[f] += r[f]||0);
+  }
+
+  const sorted = Object.values(map).sort((a,b) => a.period.localeCompare(b.period));
+  if (!sorted.length) { el.innerHTML = ''; return; }
+
+  const labelMap = { day:'日期', week:'週（起始日）', month:'月份' };
+  const tableRows = sorted.map(g => {
+    const ctr  = g.impressions > 0 ? g.link_clicks/g.impressions*100 : 0;
+    const cplc = g.link_clicks  > 0 ? g.spend/g.link_clicks : 0;
+    const roas = g.spend > 0 ? g.purchase_value/g.spend : 0;
+    const cpa  = g.purchase > 0 ? g.spend/g.purchase : 0;
+    return `<tr class="breakdown-row">
+      <td>${g.period}</td>
+      <td>${fmtM(g.spend)}</td><td></td>
+      <td>${fmtN(g.impressions)}</td>
+      <td>${fmtP(ctr)}</td>
+      <td>${fmtN(g.link_clicks)}</td>
+      <td>${fmtM(cplc)}</td>
+      <td>${fmtN(g.add_to_cart)}</td>
+      <td>${fmtN(g.purchase)}</td>
+      <td>${fmtM(g.purchase_value)}</td>
+      <td class="${rc(roas)}">${roas.toFixed(2)}x</td>
+      <td>${fmtM(cpa)}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table style="width:100%">
+    <tbody>
+      <tr class="breakdown-header">
+        <td>${labelMap[mode]}</td><td>花費</td><td>佔比</td><td>曝光</td><td>CTR</td><td>連結點擊</td><td>CPLC</td><td>加車</td><td>購買</td><td>轉換值</td><td>ROAS</td><td>CPA</td>
+      </tr>
+      ${tableRows}
+    </tbody>
+  </table>`;
 }
 
 // ── Tab 2: Meta-互動 ──────────────────────────────────────
@@ -754,7 +835,7 @@ function renderConvAdTable(data) {
       ? `<img src="${info.thumb}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;display:block;border:1px solid #eee;margin:0 auto" onerror="this.style.display='none'">`
       : '<span class="na">—</span>';
     return `<tr>
-      <td><span class="cell-name">${r.ad_name||'—'}</span><span class="cell-sub">${r.campaign_name||''}</span></td>
+      <td><span class="cell-name">${r.ad_name||'—'}</span></td>
       <td style="text-align:center">${thumb}</td>
       <td><div class="spend-bar-wrap">${fmtM(r.spend)}<div class="spend-bar" style="width:${bw}px"></div></div></td>
       <td>${fmtN(r.impressions)}</td><td>${fmtP(r.ctr)}</td><td>${fmtM(r.cplc)}</td>
