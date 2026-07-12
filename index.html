@@ -336,6 +336,7 @@ function campTableHTML(camps, colMode) {
         ${sumExtra}
       </tr>
     </tbody>
+    ${colMode === 'conv' ? '<tbody id="convBreakdownBody"></tbody>' : ''}
   </table></div>`;
 }
 
@@ -595,7 +596,6 @@ function renderConv(since, until) {
         </div>
       </div>
       ${campTableHTML(camps, 'conv')}
-      <div id="convBreakdown" style="overflow-x:auto"></div>
     </div>
     <div class="table-card">
       <div class="table-header">
@@ -638,14 +638,13 @@ function switchConvPeriod(mode, btn) {
 }
 
 function renderConvBreakdown(mode) {
-  const el = document.getElementById('convBreakdown');
+  const el = document.getElementById('convBreakdownBody');
   if (!el) return;
   const rows = allCampTrendData.filter(r => classify(r.campaign_name) === 'conv');
 
   function periodKey(dateStr) {
     if (mode === 'day') return dateStr;
     if (mode === 'month') return dateStr.slice(0, 7);
-    // week: Monday of the week
     const d = new Date(dateStr);
     const day = d.getDay() || 7;
     d.setDate(d.getDate() - day + 1);
@@ -664,7 +663,7 @@ function renderConvBreakdown(mode) {
   if (!sorted.length) { el.innerHTML = ''; return; }
 
   const labelMap = { day:'日期', week:'週（起始日）', month:'月份' };
-  const tableRows = sorted.map(g => {
+  const dataRows = sorted.map(g => {
     const ctr  = g.impressions > 0 ? g.link_clicks/g.impressions*100 : 0;
     const cplc = g.link_clicks  > 0 ? g.spend/g.link_clicks : 0;
     const roas = g.spend > 0 ? g.purchase_value/g.spend : 0;
@@ -684,14 +683,11 @@ function renderConvBreakdown(mode) {
     </tr>`;
   }).join('');
 
-  el.innerHTML = `<table style="width:100%">
-    <tbody>
-      <tr class="breakdown-header">
-        <td>${labelMap[mode]}</td><td>花費</td><td>佔比</td><td>曝光</td><td>CTR</td><td>連結點擊</td><td>CPLC</td><td>加車</td><td>購買</td><td>轉換值</td><td>ROAS</td><td>CPA</td>
-      </tr>
-      ${tableRows}
-    </tbody>
-  </table>`;
+  el.innerHTML = `
+    <tr class="breakdown-header">
+      <td>${labelMap[mode]}</td><td>花費</td><td>佔比</td><td>曝光</td><td>CTR</td><td>連結點擊</td><td>CPLC</td><td>加車</td><td>購買</td><td>轉換值</td><td>ROAS</td><td>CPA</td>
+    </tr>
+    ${dataRows}`;
 }
 
 // ── Tab 2: Meta-互動 ──────────────────────────────────────
