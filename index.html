@@ -25,6 +25,10 @@
   .period-btn.active { background: #52c41a; color: white; border-color: #52c41a; }
   .breakdown-row td { font-size: 13px; color: #444; }
   .breakdown-header td { font-size: 11px; font-weight: 700; color: #888; background: #fafafa; border-top: 2px solid #e4e6ea; text-transform: uppercase; letter-spacing: 0.3px; }
+  .summary-type-row { cursor: pointer; }
+  .summary-type-row:hover { background: #f5f7fa; }
+  .expand-arrow { display:inline-block; font-size:10px; color:#aaa; transition:transform 0.2s; margin-right:4px; }
+  .expand-arrow.open { transform: rotate(90deg); }
   .date-inputs { display: flex; align-items: center; gap: 6px; }
   .date-inputs input { padding: 5px 10px; border: 1.5px solid #e4e6ea; border-radius: 8px; font-size: 12px; outline: none; }
   .date-inputs input:focus { border-color: #1677ff; }
@@ -485,31 +489,31 @@ function renderSummary(since, until) {
           <th>互動</th><th>CPE</th><th>ETR</th>
         </tr></thead>
         <tbody>
-          <tr>
-            <td style="font-weight:700;color:#fa8c16">🛒 轉換</td>
-            <td>${fmtM(conv.spend)}</td><td>${convPct}%</td>
-            <td>${fmtN(conv.impressions)}</td><td>${fmtN(conv.link_clicks)}</td>
-            <td>${fmtP(conv.impressions ? conv.link_clicks/conv.impressions*100 : 0)}</td>
-            <td>${fmtN(conv.purchase)}</td><td>${fmtM(conv.purchase_value)}</td>
-            <td class="${rc(convRoas)}">${convRoas.toFixed(2)}x</td><td>${fmtM(convCpa)}</td>
+          <tr class="summary-type-row" onclick="toggleSummaryBreakdown('conv',this)">
+            <td><span class="expand-arrow">▶</span> <span style="font-weight:800;color:#fa8c16">🛒 轉換</span></td>
+            <td style="font-weight:700">${fmtM(conv.spend)}</td><td style="font-weight:700">${convPct}%</td>
+            <td style="font-weight:700">${fmtN(conv.impressions)}</td><td style="font-weight:700">${fmtN(conv.link_clicks)}</td>
+            <td style="font-weight:700">${fmtP(conv.impressions ? conv.link_clicks/conv.impressions*100 : 0)}</td>
+            <td style="font-weight:700">${fmtN(conv.purchase)}</td><td style="font-weight:700">${fmtM(conv.purchase_value)}</td>
+            <td class="${rc(convRoas)}" style="font-weight:700">${convRoas.toFixed(2)}x</td><td style="font-weight:700">${fmtM(convCpa)}</td>
             <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
           </tr>
         </tbody>
-        <tbody id="summaryConvBreakdown" class="summary-breakdown"></tbody>
+        <tbody id="summaryConvBreakdown" class="summary-breakdown" style="display:none"></tbody>
         <tbody>
-          <tr>
-            <td style="font-weight:700;color:#52c41a">💬 互動</td>
-            <td>${fmtM(eng.spend)}</td><td>${engPct}%</td>
-            <td>${fmtN(eng.impressions)}</td><td>${fmtN(eng.link_clicks)}</td>
-            <td>${fmtP(eng.impressions ? eng.link_clicks/eng.impressions*100 : 0)}</td>
+          <tr class="summary-type-row" onclick="toggleSummaryBreakdown('eng',this)">
+            <td><span class="expand-arrow">▶</span> <span style="font-weight:800;color:#52c41a">💬 互動</span></td>
+            <td style="font-weight:700">${fmtM(eng.spend)}</td><td style="font-weight:700">${engPct}%</td>
+            <td style="font-weight:700">${fmtN(eng.impressions)}</td><td style="font-weight:700">${fmtN(eng.link_clicks)}</td>
+            <td style="font-weight:700">${fmtP(eng.impressions ? eng.link_clicks/eng.impressions*100 : 0)}</td>
             <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
-            <td>${fmtN(eng.engagement)}</td><td>${fmtM1(engCpe)}</td><td>${fmtP(engEtr,1)}</td>
+            <td style="font-weight:700">${fmtN(eng.engagement)}</td><td style="font-weight:700">${fmtM1(engCpe)}</td><td style="font-weight:700">${fmtP(engEtr,1)}</td>
           </tr>
         </tbody>
-        <tbody id="summaryEngBreakdown" class="summary-breakdown"></tbody>
+        <tbody id="summaryEngBreakdown" class="summary-breakdown" style="display:none"></tbody>
         <tbody>
-          <tr class="sum-row">
-            <td>合計</td>
+          <tr class="sum-row summary-type-row" onclick="toggleSummaryBreakdown('all',this)">
+            <td><span class="expand-arrow">▶</span> 合計</td>
             <td>${fmtM(all.spend)}</td><td>100%</td>
             <td>${fmtN(all.impressions)}</td><td>${fmtN(all.link_clicks)}</td>
             <td>${fmtP(all.impressions ? all.link_clicks/all.impressions*100 : 0)}</td>
@@ -518,7 +522,7 @@ function renderSummary(since, until) {
             <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
           </tr>
         </tbody>
-        <tbody id="summaryAllBreakdown" class="summary-breakdown"></tbody>
+        <tbody id="summaryAllBreakdown" class="summary-breakdown" style="display:none"></tbody>
       </table></div>
     </div>`;
 
@@ -536,6 +540,15 @@ function renderSummary(since, until) {
     data:{ labels:['轉換','互動'], datasets:[{data:[conv.spend, eng.spend], backgroundColor:['#fa8c16','#52c41a'], borderWidth:2, borderColor:'white'}] },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:12},boxWidth:14,padding:10}}} }
   });
+}
+
+function toggleSummaryBreakdown(type, row) {
+  const tb = document.getElementById(`summary${type.charAt(0).toUpperCase()+type.slice(1)}Breakdown`);
+  const arrow = row.querySelector('.expand-arrow');
+  if (!tb) return;
+  const open = tb.style.display !== 'none';
+  tb.style.display = open ? 'none' : '';
+  arrow.classList.toggle('open', !open);
 }
 
 function switchSummaryPeriod(mode, btn) {
