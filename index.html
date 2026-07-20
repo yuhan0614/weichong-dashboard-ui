@@ -166,7 +166,7 @@ const ACCOUNT_ID = '1482186610196752';
 const PIE_COLORS = ['#1677ff','#fa8c16','#52c41a','#eb2f96','#722ed1','#13c2c2','#fadb14','#f5222d'];
 
 let charts = {};
-let allCampData = [], allCampTrendData = [], allAdData = [], adUrlMap = {};
+let allCampData = [], allCampTrendData = [], allAdData = [], adUrlMap = {}, allGa4Data = [];
 let adSortKey = 'spend', adSortDir = -1;
 
 // 分類：名稱含 conversion → conv，含 engage → eng，否則 other
@@ -233,18 +233,21 @@ async function fetchData(force = false) {
 
   try {
     const f = force ? '&force=true' : '';
-    const [campRes, campTrendRes, adRes, urlRes] = await Promise.all([
+    const [campRes, campTrendRes, adRes, urlRes, ga4Res] = await Promise.all([
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=campaign${f}`),
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=campaign&time_increment=daily${f}`),
       fetch(`${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}&level=ad${f}`),
       fetch(`${API_BASE}/api/ad_urls?account=${ACCOUNT_ID}`),
+      fetch(`${API_BASE}/api/ga4?since=${since}&until=${until}${f}`),
     ]);
     const campJson      = await campRes.json();
     const campTrendJson = await campTrendRes.json();
     const adJson        = await adRes.json();
+    const ga4Json       = await ga4Res.json();
     allCampData      = campJson.data      || [];
     allCampTrendData = campTrendJson.data || [];
     allAdData        = adJson.data        || [];
+    allGa4Data       = ga4Json.data       || [];
     adUrlMap     = (await urlRes.json()).data || {};
 
     const since2 = since, until2 = until;
@@ -441,19 +444,22 @@ function renderSummary(since, until) {
   const engDaily  = buildDaily('eng');
   const dates = [...new Set([...Object.keys(convDaily), ...Object.keys(engDaily)])].sort();
 
+  const ga4Revenue = allGa4Data.reduce((s, r) => s + (r.revenue || 0), 0);
+  const ga4Roas    = all.spend > 0 ? ga4Revenue / all.spend : 0;
+
   document.getElementById('tab-summary').innerHTML = `
     <div class="summary-grid">
       <div class="sc c-blue"><div class="lbl">合計花費</div><div class="val">${fmtM(all.spend)}</div><div class="sub">${since} ～ ${until}</div></div>
-      <div class="sc" style="background:#fff7e6"><div class="lbl">轉換花費</div><div class="val" style="color:#fa8c16">${fmtM(conv.spend)}</div><div class="sub">${convPct}%</div></div>
-      <div class="sc" style="background:#f0fff0"><div class="lbl">互動花費</div><div class="val" style="color:#52c41a">${fmtM(eng.spend)}</div><div class="sub">${engPct}%</div></div>
-      <div class="sc c-teal"><div class="lbl">合計購買</div><div class="val">${Math.round(all.purchase).toLocaleString()}</div><div class="sub">Conversions</div></div>
-      <div class="sc c-pink"><div class="lbl">合計營收</div><div class="val">${fmtM(all.purchase_value)}</div><div class="sub">Revenue</div></div>
-      <div class="sc c-green"><div class="lbl">合計 ROAS</div><div class="val">${allRoas.toFixed(2)}x</div><div class="sub">營收 / 花費</div></div>
-      <div class="sc"><div class="lbl">合計 CPA</div><div class="val">${fmtM(allCpa)}</div><div class="sub">Cost per Purchase</div></div>
+      <div class="sc c-teal"><div class="lbl">廣告後台購買</div><div class="val">${Math.round(all.purchase).toLocaleString()}</div><div class="sub">Meta 後台</div></div>
+      <div class="sc c-pink"><div class="lbl">廣告後台營收</div><div class="val">${fmtM(all.purchase_value)}</div><div class="sub">Meta 後台</div></div>
+      <div class="sc c-green"><div class="lbl">廣告後台 ROAS</div><div class="val">${allRoas.toFixed(2)}x</div><div class="sub">Meta 後台</div></div>
+      <div class="sc"><div class="lbl">廣告購買 CPA</div><div class="val">${fmtM(allCpa)}</div><div class="sub">Meta 後台</div></div>
+      <div class="sc c-pink"><div class="lbl">GA4 整站營收</div><div class="val">${fmtM(ga4Revenue)}</div><div class="sub">GA4</div></div>
+      <div class="sc c-green"><div class="lbl">GA4 整站 ROAS</div><div class="val">${ga4Roas.toFixed(2)}x</div><div class="sub">GA4 營收 / 花費</div></div>
     </div>
     <div class="charts-row">
       <div class="chart-card">
-        <h3>📅 每日花費趨勢（轉換 vs 互動）</h3>
+        <h3>📅 每日表現趨勢</h3>
         <div class="chart-wrap"><canvas id="summaryTrend"></canvas></div>
       </div>
       <div class="chart-card">
@@ -521,10 +527,16 @@ function renderSummary(since, until) {
       datasets: [
         { type:'bar',  label:'轉換花費', data: dates.map(d => convDaily[d]?.spend || 0), backgroundColor:'rgba(250,140,22,0.4)', borderColor:'#fa8c16', borderWidth:1, yAxisID:'y', borderRadius:3 },
         { type:'bar',  label:'互動花費', data: dates.map(d => engDaily[d]?.spend  || 0), backgroundColor:'rgba(82,196,26,0.4)',  borderColor:'#52c41a', borderWidth:1, yAxisID:'y', borderRadius:3 },
-        { type:'line', label:'ROAS',    data: dates.map(d => {
-          const s = convDaily[d]?.spend || 0, v = convDaily[d]?.purchase_value || 0;
+        { type:'line', label:'廣告 ROAS', data: dates.map(d => {
+          const s = (convDaily[d]?.spend || 0) + (engDaily[d]?.spend || 0);
+          const v = convDaily[d]?.purchase_value || 0;
           return s > 0 ? v/s : 0;
         }), borderColor:'#1677ff', borderWidth:2, pointRadius:3, tension:0.3, yAxisID:'y2' },
+        { type:'line', label:'全站 ROAS', data: dates.map(d => {
+          const ga4row = allGa4Data.find(r => r.date === d);
+          const s = (convDaily[d]?.spend || 0) + (engDaily[d]?.spend || 0);
+          return s > 0 && ga4row ? ga4row.revenue / s : 0;
+        }), borderColor:'#eb2f96', borderWidth:2, pointRadius:3, tension:0.3, yAxisID:'y2', borderDash:[4,3] },
       ]
     },
     options: {
