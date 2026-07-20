@@ -168,6 +168,7 @@ const PIE_COLORS = ['#1677ff','#fa8c16','#52c41a','#eb2f96','#722ed1','#13c2c2',
 let charts = {};
 let allCampData = [], allCampTrendData = [], allAdData = [], adUrlMap = {}, allGa4Data = [];
 let _summaryConvDaily = {}, _summaryEngDaily = {};
+let _summarySince = '', _summaryUntil = '';
 let adSortKey = 'spend', adSortDir = -1;
 
 // 分類：名稱含 conversion → conv，含 engage → eng，否則 other
@@ -486,51 +487,47 @@ function renderSummary(since, until) {
         <tbody>
           <tr>
             <td style="font-weight:700;color:#fa8c16">🛒 轉換</td>
-            <td>${fmtM(conv.spend)}</td>
-            <td>${convPct}%</td>
-            <td>${fmtN(conv.impressions)}</td>
-            <td>${fmtN(conv.link_clicks)}</td>
+            <td>${fmtM(conv.spend)}</td><td>${convPct}%</td>
+            <td>${fmtN(conv.impressions)}</td><td>${fmtN(conv.link_clicks)}</td>
             <td>${fmtP(conv.impressions ? conv.link_clicks/conv.impressions*100 : 0)}</td>
-            <td>${fmtN(conv.purchase)}</td>
-            <td>${fmtM(conv.purchase_value)}</td>
-            <td class="${rc(convRoas)}">${convRoas.toFixed(2)}x</td>
-            <td>${fmtM(convCpa)}</td>
+            <td>${fmtN(conv.purchase)}</td><td>${fmtM(conv.purchase_value)}</td>
+            <td class="${rc(convRoas)}">${convRoas.toFixed(2)}x</td><td>${fmtM(convCpa)}</td>
             <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
           </tr>
+        </tbody>
+        <tbody id="summaryConvBreakdown" class="summary-breakdown"></tbody>
+        <tbody>
           <tr>
             <td style="font-weight:700;color:#52c41a">💬 互動</td>
-            <td>${fmtM(eng.spend)}</td>
-            <td>${engPct}%</td>
-            <td>${fmtN(eng.impressions)}</td>
-            <td>${fmtN(eng.link_clicks)}</td>
+            <td>${fmtM(eng.spend)}</td><td>${engPct}%</td>
+            <td>${fmtN(eng.impressions)}</td><td>${fmtN(eng.link_clicks)}</td>
             <td>${fmtP(eng.impressions ? eng.link_clicks/eng.impressions*100 : 0)}</td>
             <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
-            <td>${fmtN(eng.engagement)}</td>
-            <td>${fmtM1(engCpe)}</td>
-            <td>${fmtP(engEtr, 1)}</td>
-          </tr>
-          <tr class="sum-row">
-            <td>合計</td>
-            <td>${fmtM(all.spend)}</td>
-            <td>100%</td>
-            <td>${fmtN(all.impressions)}</td>
-            <td>${fmtN(all.link_clicks)}</td>
-            <td>${fmtP(all.impressions ? all.link_clicks/all.impressions*100 : 0)}</td>
-            <td>${fmtN(all.purchase)}</td>
-            <td>${fmtM(all.purchase_value)}</td>
-            <td class="${rc(allRoas)}">${allRoas.toFixed(2)}x</td>
-            <td>${fmtM(allCpa)}</td>
-            <td><span class="na">—</span></td>
-            <td><span class="na">—</span></td><td><span class="na">—</span></td>
+            <td>${fmtN(eng.engagement)}</td><td>${fmtM1(engCpe)}</td><td>${fmtP(engEtr,1)}</td>
           </tr>
         </tbody>
+        <tbody id="summaryEngBreakdown" class="summary-breakdown"></tbody>
+        <tbody>
+          <tr class="sum-row">
+            <td>合計</td>
+            <td>${fmtM(all.spend)}</td><td>100%</td>
+            <td>${fmtN(all.impressions)}</td><td>${fmtN(all.link_clicks)}</td>
+            <td>${fmtP(all.impressions ? all.link_clicks/all.impressions*100 : 0)}</td>
+            <td>${fmtN(all.purchase)}</td><td>${fmtM(all.purchase_value)}</td>
+            <td class="${rc(allRoas)}">${allRoas.toFixed(2)}x</td><td>${fmtM(allCpa)}</td>
+            <td><span class="na">—</span></td><td><span class="na">—</span></td><td><span class="na">—</span></td>
+          </tr>
+        </tbody>
+        <tbody id="summaryAllBreakdown" class="summary-breakdown"></tbody>
       </table></div>
     </div>`;
 
-  // 趨勢圖
   _summaryConvDaily = convDaily;
   _summaryEngDaily  = engDaily;
+  _summarySince = since;
+  _summaryUntil = until;
   drawSummaryTrend('day');
+  renderSummaryTableBreakdown('day');
 
   // 圓餅圖
   if (charts['summaryPie']) charts['summaryPie'].destroy();
@@ -545,6 +542,90 @@ function switchSummaryPeriod(mode, btn) {
   document.querySelectorAll('#tab-summary .period-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   drawSummaryTrend(mode);
+  renderSummaryTableBreakdown(mode);
+}
+
+function renderSummaryTableBreakdown(mode) {
+  function periodKey(dateStr) {
+    if (mode === 'day') return dateStr;
+    if (mode === 'month') return dateStr.slice(0, 7);
+    const d = new Date(dateStr), day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  const aggTrend = (type) => {
+    const m = {};
+    allCampTrendData
+      .filter(r => classify(r.campaign_name) === type && r.date_start >= _summarySince && r.date_start <= _summaryUntil)
+      .forEach(r => {
+        const k = periodKey(r.date_start);
+        if (!m[k]) m[k] = { spend:0, impressions:0, link_clicks:0, purchase:0, purchase_value:0, engagement:0 };
+        ['spend','impressions','link_clicks','purchase','purchase_value','engagement'].forEach(f => m[k][f] += r[f]||0);
+      });
+    return m;
+  };
+
+  const conv = aggTrend('conv');
+  const eng  = aggTrend('eng');
+  const dates = [...new Set([...Object.keys(conv), ...Object.keys(eng)])].sort();
+  const na = '<span class="na">—</span>';
+
+  const convRows = dates.map(d => {
+    const g = conv[d] || {};
+    const roas = g.spend > 0 ? g.purchase_value/g.spend : 0;
+    const cpa  = g.purchase > 0 ? g.spend/g.purchase : 0;
+    const ctr  = g.impressions > 0 ? g.link_clicks/g.impressions*100 : 0;
+    return `<tr class="breakdown-row">
+      <td style="padding-left:24px;color:#888">${d}</td>
+      <td>${fmtM(g.spend||0)}</td><td></td>
+      <td>${fmtN(g.impressions||0)}</td><td>${fmtN(g.link_clicks||0)}</td>
+      <td>${fmtP(ctr)}</td>
+      <td>${fmtN(g.purchase||0)}</td><td>${fmtM(g.purchase_value||0)}</td>
+      <td class="${rc(roas)}">${roas.toFixed(2)}x</td><td>${fmtM(cpa)}</td>
+      <td>${na}</td><td>${na}</td><td>${na}</td>
+    </tr>`;
+  }).join('');
+
+  const engRows = dates.map(d => {
+    const g = eng[d] || {};
+    const cpe = g.engagement > 0 ? g.spend/g.engagement : 0;
+    const etr = g.impressions > 0 ? g.engagement/g.impressions*100 : 0;
+    const ctr = g.impressions > 0 ? g.link_clicks/g.impressions*100 : 0;
+    return `<tr class="breakdown-row">
+      <td style="padding-left:24px;color:#888">${d}</td>
+      <td>${fmtM(g.spend||0)}</td><td></td>
+      <td>${fmtN(g.impressions||0)}</td><td>${fmtN(g.link_clicks||0)}</td>
+      <td>${fmtP(ctr)}</td>
+      <td>${na}</td><td>${na}</td><td>${na}</td><td>${na}</td>
+      <td>${fmtN(g.engagement||0)}</td><td>${fmtM1(cpe)}</td><td>${fmtP(etr,1)}</td>
+    </tr>`;
+  }).join('');
+
+  const allRows = dates.map(d => {
+    const c = conv[d] || {}, e = eng[d] || {};
+    const spend = (c.spend||0)+(e.spend||0);
+    const imp   = (c.impressions||0)+(e.impressions||0);
+    const lc    = (c.link_clicks||0)+(e.link_clicks||0);
+    const pur   = c.purchase||0;
+    const pv    = c.purchase_value||0;
+    const roas  = spend > 0 ? pv/spend : 0;
+    const cpa   = pur > 0 ? spend/pur : 0;
+    const ctr   = imp > 0 ? lc/imp*100 : 0;
+    return `<tr class="breakdown-row">
+      <td style="padding-left:24px;color:#888">${d}</td>
+      <td>${fmtM(spend)}</td><td></td>
+      <td>${fmtN(imp)}</td><td>${fmtN(lc)}</td>
+      <td>${fmtP(ctr)}</td>
+      <td>${fmtN(pur)}</td><td>${fmtM(pv)}</td>
+      <td class="${rc(roas)}">${roas.toFixed(2)}x</td><td>${fmtM(cpa)}</td>
+      <td>${na}</td><td>${na}</td><td>${na}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('summaryConvBreakdown').innerHTML = convRows;
+  document.getElementById('summaryEngBreakdown').innerHTML  = engRows;
+  document.getElementById('summaryAllBreakdown').innerHTML  = allRows;
 }
 
 function drawSummaryTrend(mode) {
