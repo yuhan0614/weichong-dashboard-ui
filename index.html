@@ -167,6 +167,7 @@ const PIE_COLORS = ['#1677ff','#fa8c16','#52c41a','#eb2f96','#722ed1','#13c2c2',
 
 let charts = {};
 let allCampData = [], allCampTrendData = [], allAdData = [], adUrlMap = {}, allGa4Data = [];
+let _summaryConvDaily = {}, _summaryEngDaily = {};
 let adSortKey = 'spend', adSortDir = -1;
 
 // 分類：名稱含 conversion → conv，含 engage → eng，否則 other
@@ -459,7 +460,14 @@ function renderSummary(since, until) {
     </div>
     <div class="charts-row">
       <div class="chart-card">
-        <h3>📅 每日表現趨勢</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">📅 每日表現趨勢</h3>
+          <div style="display:flex;gap:6px">
+            <button class="period-btn active" onclick="switchSummaryPeriod('day',this)">日</button>
+            <button class="period-btn" onclick="switchSummaryPeriod('week',this)">週</button>
+            <button class="period-btn" onclick="switchSummaryPeriod('month',this)">月</button>
+          </div>
+        </div>
         <div class="chart-wrap"><canvas id="summaryTrend"></canvas></div>
       </div>
       <div class="chart-card">
@@ -520,22 +528,71 @@ function renderSummary(since, until) {
     </div>`;
 
   // 趨勢圖
+  _summaryConvDaily = convDaily;
+  _summaryEngDaily  = engDaily;
+  drawSummaryTrend('day');
+
+  // 圓餅圖
+  if (charts['summaryPie']) charts['summaryPie'].destroy();
+  charts['summaryPie'] = new Chart(document.getElementById('summaryPie'), {
+    type:'doughnut',
+    data:{ labels:['轉換','互動'], datasets:[{data:[conv.spend, eng.spend], backgroundColor:['#fa8c16','#52c41a'], borderWidth:2, borderColor:'white'}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:12},boxWidth:14,padding:10}}} }
+  });
+}
+
+function switchSummaryPeriod(mode, btn) {
+  document.querySelectorAll('#tab-summary .period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  drawSummaryTrend(mode);
+}
+
+function drawSummaryTrend(mode) {
+  function periodKey(dateStr) {
+    if (mode === 'day') return dateStr;
+    if (mode === 'month') return dateStr.slice(0, 7);
+    const d = new Date(dateStr), day = d.getDay() || 7;
+    d.setDate(d.getDate() - day + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  const agg = (daily) => {
+    const m = {};
+    for (const [date, v] of Object.entries(daily)) {
+      const k = periodKey(date);
+      if (!m[k]) m[k] = { spend:0, purchase_value:0 };
+      m[k].spend          += v.spend          || 0;
+      m[k].purchase_value += v.purchase_value || 0;
+    }
+    return m;
+  };
+  const aggGa4 = () => {
+    const m = {};
+    for (const r of allGa4Data) {
+      const k = periodKey(r.date);
+      if (!m[k]) m[k] = { revenue:0 };
+      m[k].revenue += r.revenue || 0;
+    }
+    return m;
+  };
+  const conv = agg(_summaryConvDaily);
+  const eng  = agg(_summaryEngDaily);
+  const ga4  = aggGa4();
+  const dates = [...new Set([...Object.keys(conv), ...Object.keys(eng)])].sort();
+
   if (charts['summaryTrend']) charts['summaryTrend'].destroy();
   charts['summaryTrend'] = new Chart(document.getElementById('summaryTrend'), {
     data: {
       labels: dates,
       datasets: [
-        { type:'bar',  label:'轉換花費', data: dates.map(d => convDaily[d]?.spend || 0), backgroundColor:'rgba(250,140,22,0.4)', borderColor:'#fa8c16', borderWidth:1, yAxisID:'y', borderRadius:3 },
-        { type:'bar',  label:'互動花費', data: dates.map(d => engDaily[d]?.spend  || 0), backgroundColor:'rgba(82,196,26,0.4)',  borderColor:'#52c41a', borderWidth:1, yAxisID:'y', borderRadius:3 },
+        { type:'bar',  label:'轉換花費', data: dates.map(d => conv[d]?.spend || 0), backgroundColor:'rgba(250,140,22,0.4)', borderColor:'#fa8c16', borderWidth:1, yAxisID:'y', borderRadius:3 },
+        { type:'bar',  label:'互動花費', data: dates.map(d => eng[d]?.spend  || 0), backgroundColor:'rgba(82,196,26,0.4)',  borderColor:'#52c41a', borderWidth:1, yAxisID:'y', borderRadius:3 },
         { type:'line', label:'廣告 ROAS', data: dates.map(d => {
-          const s = (convDaily[d]?.spend || 0) + (engDaily[d]?.spend || 0);
-          const v = convDaily[d]?.purchase_value || 0;
+          const s = (conv[d]?.spend||0)+(eng[d]?.spend||0), v = conv[d]?.purchase_value||0;
           return s > 0 ? v/s : 0;
         }), borderColor:'#1677ff', borderWidth:2, pointRadius:3, tension:0.3, yAxisID:'y2' },
         { type:'line', label:'全站 ROAS', data: dates.map(d => {
-          const ga4row = allGa4Data.find(r => r.date === d);
-          const s = (convDaily[d]?.spend || 0) + (engDaily[d]?.spend || 0);
-          return s > 0 && ga4row ? ga4row.revenue / s : 0;
+          const s = (conv[d]?.spend||0)+(eng[d]?.spend||0);
+          return s > 0 && ga4[d] ? ga4[d].revenue/s : 0;
         }), borderColor:'#eb2f96', borderWidth:2, pointRadius:3, tension:0.3, yAxisID:'y2', borderDash:[4,3] },
       ]
     },
@@ -545,18 +602,10 @@ function renderSummary(since, until) {
       plugins:{ legend:{ position:'top', labels:{font:{size:11},boxWidth:12,padding:10} } },
       scales: {
         x:  { stacked:true, grid:{display:false}, ticks:{font:{size:10},maxTicksLimit:10} },
-        y:  { stacked:true, position:'left',  beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:v=>'NT$'+Math.round(v/1000)+'K',font:{size:10}} },
+        y:  { stacked:true, position:'left', beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:v=>'NT$'+Math.round(v/1000)+'K',font:{size:10}} },
         y2: { position:'right', beginAtZero:true, grid:{display:false}, ticks:{callback:v=>v.toFixed(1)+'x',font:{size:10}} },
       }
     }
-  });
-
-  // 圓餅圖
-  if (charts['summaryPie']) charts['summaryPie'].destroy();
-  charts['summaryPie'] = new Chart(document.getElementById('summaryPie'), {
-    type:'doughnut',
-    data:{ labels:['轉換','互動'], datasets:[{data:[conv.spend, eng.spend], backgroundColor:['#fa8c16','#52c41a'], borderWidth:2, borderColor:'white'}] },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:12},boxWidth:14,padding:10}}} }
   });
 }
 
