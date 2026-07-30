@@ -221,11 +221,24 @@ function applyPresetMonth() {
   document.getElementById('dateTo').value = toYMD(to);
 })();
 
+// 已 render 過的 tab
+const _rendered = { summary: false, conv: false, eng: false };
+let _currentSince = '', _currentUntil = '';
+
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  // lazy render：切到該 tab 時才 render（資料已備妥則立即，否則 fetchData 完成後會補）
+  if (_currentSince && !_rendered[name]) {
+    if (name === 'conv') { renderConv(_currentSince, _currentUntil); _rendered.conv = true; }
+    if (name === 'eng')  { renderEng(_currentSince, _currentUntil);  _rendered.eng  = true; }
+  }
+}
+
+function _sessionKey(since, until) {
+  return `wc_${ACCOUNT_ID}_${since}_${until}`;
 }
 
 async function fetchData(force = false) {
@@ -237,6 +250,31 @@ async function fetchData(force = false) {
   document.getElementById('loadingOverlay').classList.add('show');
   status.textContent = '載入中…'; status.className = 'status-text';
 
+  // sessionStorage 快取（force 時略過）
+  const sKey = _sessionKey(since, until);
+  if (!force) {
+    try {
+      const cached = sessionStorage.getItem(sKey);
+      if (cached) {
+        const d = JSON.parse(cached);
+        allCampData = d.camps; allCampTrendData = d.trend;
+        allAdData   = d.ads;   adUrlMap = d.urls; allGa4Data = d.ga4;
+        _currentSince = since; _currentUntil = until;
+        _rendered.summary = _rendered.conv = _rendered.eng = false;
+        renderSummary(since, until);
+        _rendered.summary = true;
+        const activeTab = document.querySelector('.tab-panel.active')?.id?.replace('tab-','');
+        if (activeTab === 'conv') { renderConv(since, until); _rendered.conv = true; }
+        if (activeTab === 'eng')  { renderEng(since, until);  _rendered.eng  = true; }
+        status.textContent = `✓ 完成・${allCampData.length} campaigns・${allAdData.length} 素材`;
+        status.className = 'status-text ok';
+        btn.disabled = false;
+        document.getElementById('loadingOverlay').classList.remove('show');
+        return;
+      }
+    } catch(e) {}
+  }
+
   try {
     const f = force ? '&force=true' : '';
     const [campRes, campTrendRes, adRes, urlRes, ga4Res] = await Promise.all([
@@ -246,20 +284,32 @@ async function fetchData(force = false) {
       fetch(`${API_BASE}/api/ad_urls?account=${ACCOUNT_ID}`),
       fetch(`${API_BASE}/api/ga4?since=${since}&until=${until}${f}`),
     ]);
-    const campJson      = await campRes.json();
-    const campTrendJson = await campTrendRes.json();
-    const adJson        = await adRes.json();
-    const ga4Json       = await ga4Res.json();
+    const [campJson, campTrendJson, adJson, urlJson, ga4Json] = await Promise.all([
+      campRes.json(), campTrendRes.json(), adRes.json(), urlRes.json(), ga4Res.json()
+    ]);
     allCampData      = campJson.data      || [];
     allCampTrendData = campTrendJson.data || [];
     allAdData        = adJson.data        || [];
     allGa4Data       = ga4Json.data       || [];
-    adUrlMap     = (await urlRes.json()).data || {};
+    adUrlMap         = urlJson.data       || {};
 
-    const since2 = since, until2 = until;
-    renderSummary(since2, until2);
-    renderConv(since2, until2);
-    renderEng(since2, until2);
+    // 存入 sessionStorage
+    try {
+      sessionStorage.setItem(sKey, JSON.stringify({
+        camps: allCampData, trend: allCampTrendData,
+        ads: allAdData, urls: adUrlMap, ga4: allGa4Data
+      }));
+    } catch(e) {}
+
+    _currentSince = since; _currentUntil = until;
+    _rendered.summary = _rendered.conv = _rendered.eng = false;
+
+    // 先 render 目前看的 tab + summary，其他 lazy
+    renderSummary(since, until);
+    _rendered.summary = true;
+    const activeTab = document.querySelector('.tab-panel.active')?.id?.replace('tab-','');
+    if (activeTab === 'conv') { renderConv(since, until); _rendered.conv = true; }
+    if (activeTab === 'eng')  { renderEng(since, until);  _rendered.eng  = true; }
 
     document.getElementById('lastUpdate').textContent =
       (campJson.updated || new Date().toLocaleString('zh-TW')) + (campJson.cached ? '（快取）' : '');
